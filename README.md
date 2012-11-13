@@ -38,4 +38,7 @@ Once connected to your AR Drones wifi network. Run the app like so;
   node http-trackpad/app.js
 ~~~
 
+On your ipad's browser visit your computer's ip at port 8080
+e.g. http://192.168.0.4:8080
+
 For more information read the http-trackpad Readme
