@@ -12,10 +12,10 @@ We essentially added ar-drone functionality to the app in the http-trackpad modu
 #### Take Off and Land ####
 Tap with three fingers.
 
-#### Increase Altitude #### 
+#### Increase Altitude ####
 Drag upwards with two fingers.
 
-#### Decrease Altitude #### 
+#### Decrease Altitude ####
 Drag downwards with two fingers.
 
 #### Tilt Left ####
@@ -24,7 +24,7 @@ Use one finger and swipe left.
 #### Tilt Right ####
 Use one finger and swipe right.
 
-#### Tilt Forward #### 
+#### Tilt Forward ####
 Use one finger and swipe up.
 
 #### Tilt Backwards ####
