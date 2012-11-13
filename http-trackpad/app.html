@@ -1,0 +1,311 @@
+<!doctype html>
+<head>
+	<title>Trackpad</title>
+	<meta name="viewport" content="width=1024, height=643, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<script src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
+	<script>
+		$(function() {
+			var socket = io.connect(),
+				prev,
+				numMoves = 0,
+				speedMult = 1;
+			
+			setInterval(function() {
+				var me = arguments.callee;
+				if (!me.prevNumMoves) me.prevNumMoves = numMoves;
+				
+				var delta = numMoves - me.prevNumMoves;
+				
+				if (delta > 5) speedMult = 3;
+				else speedMult = 1;
+				
+				me.prevNumMoves = numMoves;
+				//if (delta > 6) console.log(a);
+			}, 100);
+			
+			$('#tp').mousemove(function(e) {
+				if (!prev) {
+					prev = {x: e.pageX, y:e.pageY};
+					return;
+				}
+
+				var delta = {x: e.pageX - prev.x, y: e.pageY - prev.y};
+				if (delta.x == 0 && delta.y == 0) return;
+				
+				if (!e.ctrlKey) socket.emit('mousemove', delta.x * speedMult + ' ' + delta.y * speedMult);
+				prev = {x: e.pageX, y: e.pageY};
+			});
+			
+			$(document)[0].oncontextmenu = function(e) { return false; };
+
+			$('#tp').mousedown(function(e) {
+				socket.emit('mousedown', e.button);
+			});
+			
+			$('#tp').mouseup(function(e) {
+				socket.emit('mouseup', e.button);
+			});
+			
+			var keyMap = {};
+			$('#keyboard button').each(function(i, e) {
+				if ($(e).data('keyCode')) keyMap[$(e).data('keyCode')] = $(e).data('cmd');
+			});
+
+			$(document.body).keydown(function(e) {
+				var key = keyMap[e.which] || String.fromCharCode(e.which);
+				socket.emit('keydown', key);
+			});
+			
+			$(document.body).keyup(function(e) {
+				var key = keyMap[e.which] || String.fromCharCode(e.which);
+				socket.emit('keyup', key);
+			});
+			
+			document.getElementById('tp').addEventListener('touchmove', function(e) {
+				e.preventDefault();
+				var touch = e.touches[0];
+				
+				if (!prev) {
+					prev = {x: touch.pageX, y:touch.pageY};
+					return;
+				}
+
+				++numMoves;
+				
+				// Two finger scroll
+				if (e.touches.length == 2) {
+					if (touch.pageY > prev.y && (touch.pageY - prev.y > 5 || numMoves % 3 == 0)) socket.emit('scrolldown');
+					if (touch.pageY < prev.y && (touch.pageY - prev.y < -5 || numMoves % 3 == 0)) socket.emit('scrollup');
+					prev = {x: touch.pageX, y: touch.pageY};
+					return;
+				}
+				
+				var delta = {x: touch.pageX - prev.x, y: touch.pageY - prev.y};
+				if (delta.x == 0 && delta.y == 0) return;
+				
+				socket.emit('mousemove', delta.x * speedMult + ' ' + delta.y * speedMult);
+				prev = {x: touch.pageX, y: touch.pageY};
+			});
+			
+			var lastTap = 0,
+				twoFingers = false,
+				threeFingers = false;
+				
+			document.getElementById('tp').addEventListener('touchstart', function(e) {
+				e.preventDefault();
+				
+				lastTap = new Date().getTime();
+				if (e.touches.length == 2) twoFingers = true;
+				if (e.touches.length == 3) threeFingers = true;
+			});
+			
+			document.getElementById('tp').addEventListener('touchend', function(e) {
+				e.preventDefault();
+				var touch = e.touches[0];
+				
+				prev = null;
+				if (new Date().getTime() - lastTap < 500 && numMoves < 4) {
+					if (threeFingers) socket.emit('middleclick');
+					else if (twoFingers) socket.emit('rightclick');
+					else socket.emit('click');
+				}
+
+				if (e.touches.length == 0) twoFingers = threeFingers = false;
+
+				numMoves = 0;
+			});
+			
+			var heldKeys = [];
+			$('#keyboard').on('touchstart', 'button', function(event) {
+				var button = $(event.target),
+					hold = button.data('hold'),
+					held = button.data('held'),
+					key = button.data('cmd') !== undefined ? button.data('cmd') : button.text();
+					
+				button.addClass('pressed');
+				
+				if (hold) {
+					if (!held) {
+						button.data('held', held = true);
+						heldKeys.push(button);
+					} else {
+						button.data('held', held = false);
+					}
+				}
+				
+				if (held || !hold) socket.emit('keydown', key);
+			});
+			
+			$('#keyboard').on('touchend', 'button', function(event) {
+				var button = $(event.target),
+					hold = button.data('hold'),
+					held = button.data('held'),
+					key = button.data('cmd') !== undefined ? button.data('cmd') : button.text();
+					
+				if (!hold) {
+					for (var i = 0; i < heldKeys.length; i++) {
+						heldKeys[i].trigger('touchstart').trigger('touchend');
+					}
+
+					heldKeys = [];
+				}
+				
+				if (!held) {
+					button.removeClass('pressed');
+					socket.emit('keyup', key);
+				}
+			});
+			
+			$('#keyboard').on('touchmove', function(e) {
+				e.preventDefault();
+				return;
+			})
+			
+			if (navigator.userAgent.match(/iPad/i) == null) $('#keyboard').hide();
+		});
+	</script>
+</head>
+<body>
+	<div id="tp"></div>
+	
+	<style>
+		body {
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+		}
+	
+		#tp { background-color: #efefef; height: 2000px; }
+		
+		#tp.blink {
+			background-color: yellow;
+		}
+	
+		.keyboard {
+			height: 313px;
+			width: 1024px;
+			background: -webkit-gradient(linear, left top, left bottom, from(#9e9da7), to(#43444b));
+			border-top: 1px solid black;
+			border-bottom: 1px solid black;
+			position: absolute;
+			bottom: 0;
+			padding: 2px 0 0 5px;
+		}
+		
+		.keyboard .key {
+			width: 60px;
+			height: 56px;
+			margin: 3px 2px;
+			border: 1px solid #58575e;
+			border-radius: 6px;
+			background: -webkit-gradient(linear, left top, left bottom, from(#eeeef1), to(#bdbdc2));
+			font-size: 20px;
+			text-align: center;
+			padding: none;
+			box-shadow: 1px 2px 2px #333;
+			-webkit-tap-highlight-color: rgba(0,0,0,0);
+			vertical-align: bottom;
+			line-height: 1.1em;
+		}
+		
+		.keyboard .key.pressed {
+			background: -webkit-gradient(linear, left top, left bottom, from(#a8aab1), to(#77787f));
+		}
+		
+		.row0 .last { width: 126px; }
+		.row1 .first { width: 96px; }
+		.row1 .last { width: 90px; }
+		.row2 .first { width: 122px; }
+		.row2 .last { width: 132px; }
+		.row3 .first { width: 152px; }
+		.row3 .last { width: 171px; }
+		.row4 .first { width: 84px; }
+		.row4 .spacebar { width: 360px; }
+		.row4 .rightctrl { width: 75px; }
+		
+		.keyboard .key.smalltext { font-size: 18px; }
+		.keyboard .key.bigtext { font-size: 22px; }
+
+		#keyboard { display: none;}
+	</style>
+	
+	<div id="keyboard" class="keyboard">
+		<div class="row0">
+			<button class="key first" data-cmd="grave" data-key-code="192">~<br>`</button>
+			<button class="key" data-cmd="1">!<br>1</button>
+			<button class="key" data-cmd="2">@<br>2</button>
+			<button class="key" data-cmd="3">#<br>3</button>
+			<button class="key" data-cmd="4">$<br>4</button>
+			<button class="key" data-cmd="5">%<br>5</button>
+			<button class="key" data-cmd="6">^<br>6</button>
+			<button class="key" data-cmd="7">&<br>7</button>
+			<button class="key" data-cmd="8">*<br>8</button>
+			<button class="key" data-cmd="9">(<br>9</button>
+			<button class="key" data-cmd="0">)<br>0</button>
+			<button class="key" data-cmd="underscore" data-key-code="189">_<br>-</button>
+			<button class="key" data-cmd="equal" data-key-code="187">+<br>=</button>
+			<button class="key last" data-cmd="BackSpace" data-key-code="8">⌫</button>
+		</div>
+		<div class="row1">
+			<button class="key first smalltext" data-cmd="Tab" data-key-code="9">↹ Tab</button>
+			<button class="key">Q</button>
+			<button class="key">W</button>
+			<button class="key">E</button>
+			<button class="key">R</button>
+			<button class="key">T</button>
+			<button class="key">Y</button>
+			<button class="key">U</button>
+			<button class="key">I</button>
+			<button class="key">O</button>
+			<button class="key">P</button>
+			<button class="key" data-cmd="bracketleft" data-key-code="219">{<br>[</button>
+			<button class="key" data-cmd="bracketright" data-key-code="221">}<br>]</button>
+			<button class="key last" data-cmd="backslash" data-key-code="220">|<br>\</button>
+		</div>
+		<div class="row2">
+			<button class="key first smalltext" data-cmd="Caps_Lock" data-key-code="20">⇪ CapsLk</button>
+			<button class="key">A</button>
+			<button class="key">S</button>
+			<button class="key">D</button>
+			<button class="key">F</button>
+			<button class="key">G</button>
+			<button class="key">H</button>
+			<button class="key">J</button>
+			<button class="key">K</button>
+			<button class="key">L</button>
+			<button class="key" data-cmd="semicolon" data-key-code="186">:<br>;</button>
+			<button class="key" data-cmd="apostrophe" data-key-code="222">&quot;<br>'</button>
+			<button class="key last" data-cmd="Return" data-key-code="13">⏎ Enter</button>
+		</div>
+		<div class="row3">
+			<button class="key first" data-cmd="Shift_L" data-key-code="16" data-hold="true">&#8679; Shift</button>
+			<button class="key">Z</button>
+			<button class="key">X</button>
+			<button class="key">C</button>
+			<button class="key">V</button>
+			<button class="key">B</button>
+			<button class="key">N</button>
+			<button class="key">M</button>
+			<button class="key" data-cmd="comma" data-key-code="188">&lt;<br>,</button>
+			<button class="key" data-cmd="period" data-key-code="190">&gt;<br>.</button>
+			<button class="key" data-cmd="slash" data-key-code="191">?<br>/</button>
+			<button class="key last" data-cmd="Shift_R" data-key-code="16" data-hold="true">&#8679; Shift</button>
+		</div>
+		<div class="row4">
+			<button class="key first smalltext" data-cmd="Control_L" data-key-code="17" data-hold="true">Ctrl</button>
+			<button class="key" data-cmd="Super_L" data-key-code="91">&#63743;</button>
+			<button class="key smalltext" data-cmd="Alt_L" data-key-code="18" data-hold="true">Alt</button>
+			<button class="key spacebar" data-cmd="space" data-key-code="32">&nbsp;</button>
+			<button class="key smalltext" data-cmd="Alt_R" data-key-code="18" data-hold="true">Alt</button>
+			<button class="key rightctrl smalltext" data-cmd="Control_R" data-key-code="17" data-hold="true">Ctrl</button>
+			<button class="key bigtext" data-cmd="Up" data-key-code="38">&uarr;</button>
+			<button class="key bigtext" data-cmd="Down" data-key-code="40">&darr;</button>
+			<button class="key bigtext" data-cmd="Left" data-key-code="37">&larr;</button>
+			<button class="key bigtext" data-cmd="Right" data-key-code="39">&rarr;</button>
+		</div>
+	</div>
+	
+	<input type="text">
+</body>
+</html>
