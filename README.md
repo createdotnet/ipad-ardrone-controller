@@ -34,7 +34,8 @@ Use one finger and swipe down.
 ## Running the App ##
 
 Once connected to your AR Drones wifi network. Run the app like so;
+~~~
   node http-trackpad/app.js
-
+~~~
 
 For more information read the http-trackpad Readme
